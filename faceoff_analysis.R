@@ -1,6 +1,6 @@
 library(dplyr)
 library(lme4)
-#library(chron)
+
 setwd("C:/Users/Peter/Documents/stathletes_hockey_hackathon_2021")
 
 ##### Step 1 - Process Women's Olympic hockey data #####
@@ -11,7 +11,8 @@ olympic_data <- read.csv('data/hackathon_womens.csv',
 
 
 olympic_womens_faceoff_data <- olympic_data %>%
-  filter(Event == 'Faceoff Win') 
+  filter(Event == 'Faceoff Win') %>%
+  mutate(is_home =  ifelse(Home.Team == Team, 1,0))
 
 ### Look at which teams played against one another
 # unique(olympic_data[,c('Home.Team', 'Away.Team')]) %>%
@@ -37,7 +38,7 @@ fo_winners <- olympic_womens_faceoff_data %>%
   select(-Home.Team.Skaters, -Away.Team.Skaters,
          -Home.Team.Goals, -Away.Team.Goals,
          -Detail.2, -Detail.3, -Detail.4, 
-         -X.Coordinate.2, -Y.Coordinate.2 #,
+         -X.Coordinate.2, -Y.Coordinate.2, -is_home #,
          #-Home.Team, -Away.Team, -Event
   ) %>%
   rename(p1 = Player,
@@ -85,16 +86,34 @@ zone_complement <- ifelse(zone == 'D', 'O',
 
 olympic_faceoff_data$zone <- c(zone, zone_complement)
 
-# Add Faceoff Side 
-faceoff_side <- ifelse(olympic_womens_faceoff_data$Y.Coordinate > 42.5, 'L', 'R')
+##### Add Faceoff Side  #####
+faceoff_side <- ifelse(olympic_womens_faceoff_data$Y.Coordinate > 42.5, 'R', 'L')
+# 
+# faceoff_side <- ifelse( (olympic_womens_faceoff_data$is_home == 1) & (olympic_womens_faceoff_data$Period %% 2 !=0) & (olympic_womens_faceoff_data$Y.Coordinate > 42.5), 
+#                            'R', 
+#                            ifelse((olympic_womens_faceoff_data$is_home == 1) & (olympic_womens_faceoff_data$Period %% 2 ==0) & (olympic_womens_faceoff_data$Y.Coordinate < 42.5),
+#                                   'R', 
+#                                   ifelse((olympic_womens_faceoff_data$is_home == 0) & (olympic_womens_faceoff_data$Period %% 2 !=0) & (olympic_womens_faceoff_data$Y.Coordinate < 42.5),
+#                                          'R', 
+#                                          ifelse((olympic_womens_faceoff_data$is_home == 0) & (olympic_womens_faceoff_data$Period %% 2 ==0) & (olympic_womens_faceoff_data$Y.Coordinate > 42.5),
+#                                                 'R', 'L'))))
+
+# faceoff_side <- ifelse(faceoff_side == 'R', 'L', 'R')
 faceoff_side_complement <- ifelse(faceoff_side == 'R', 'L', 'R')
 olympic_faceoff_data$faceoff_side <- c(faceoff_side, faceoff_side_complement)
-
-
 
 olympic_faceoff_data <- cbind(olympic_faceoff_data, 
                               nnet::class.ind(olympic_faceoff_data$zone),
                               nnet::class.ind(olympic_faceoff_data$faceoff_side))
+
+##### Add strong side / Weak side indicator #####
+player_handedness_df <- read.csv('./data/player_handednes.csv')
+
+olympic_faceoff_data <- 
+olympic_faceoff_data %>%
+  left_join(player_handedness_df, by = c('p1' = 'player_name')) %>%
+  mutate(is_strong_side = ifelse(faceoff_side == player_handedness,
+                                 1,0))
 
 
 # -- What are the faceoff coordinates?
@@ -129,12 +148,12 @@ olympic_faceoff_data <- olympic_faceoff_data %>%
 # -- Add time remaining as a feature?
 #str(olympic_faceoff_data)
 
-period_time = strptime(olympic_faceoff_data$Clock, 
-         format = "%M:%S")
-period_time_left = lubridate::minute(period_time) + lubridate::second(period_time)/60
-
-olympic_faceoff_data$period_time_left <- period_time_left
-olympic_faceoff_data$percent_period_left <- olympic_faceoff_data$period_time_left/20
+# period_time = strptime(olympic_faceoff_data$Clock, 
+#          format = "%M:%S")
+# period_time_left = lubridate::minute(period_time) + lubridate::second(period_time)/60
+# 
+# olympic_faceoff_data$period_time_left <- period_time_left
+# olympic_faceoff_data$percent_period_left <- olympic_faceoff_data$period_time_left/20
 
 #quantile(olympic_faceoff_data$percent_period_left)
 #quantile(olympic_faceoff_data$period_time_left)
@@ -175,9 +194,10 @@ olympic_model_fit <- glmer(formula = p1_won ~ is_p1_home +
                              # percent_period_left +
                              #is_p1_pp1 + is_p1_pp2 +
                              #is_p1_sh1 + is_p1_sh2 +
-                             L + 
+                             #L +
+                             is_strong_side +
                              D + O + 
-                             (1  | p1) +
+                             (1 | p1) +
                              (1 | p2), 
                          #data = olympic_faceoff_data_to_fit, 
                          data =  olympic_faceoff_data,
@@ -185,8 +205,10 @@ olympic_model_fit <- glmer(formula = p1_won ~ is_p1_home +
                          family = binomial)
 
 
-# summary(olympic_model_fit)
+summary(olympic_model_fit)
 # VarCorr(olympic_model_fit)
+
+# Get standard deviations of BLUPs
 randoms<-ranef(olympic_model_fit, postVar = TRUE)
 qq <- attr(ranef(olympic_model_fit, postVar = TRUE)[[1]], "postVar")
 length(qq)
@@ -205,20 +227,7 @@ random_int_df <- data.frame(
   intercept2 = p2_intercept$`(Intercept)`
   )
 
-write.csv('./data/plot_intercept.csv', 
-          x=random_int_df,
-          row.names = FALSE)
 
-
-
-random_int_df <- data.frame(
-  player_name = rownames(p1_intercept),
-  intercept1 = p1_intercept$`(Intercept)`,
-  L_side_effect = p1_intercept$L#,
-  #O_zone_effect = p1_intercept$O,
-  #player2 = rownames(p2_intercept),
-  #intercept2 = p2_intercept$`(Intercept)`
-  )
 
 random_int_df <-
 random_int_df %>% left_join( olympic_faceoff_data %>%
@@ -228,19 +237,30 @@ random_int_df %>% left_join( olympic_faceoff_data %>%
   
 )
 
-# random_int_df %>%
-#   arrange(desc(intercept1)) %>%
-#   View()
+write.csv('./data/plot_intercept.csv', 
+          x=random_int_df,
+          row.names = FALSE)
 
-random_int_df %>%
-  arrange(desc(L_side_effect)) %>%
-  View()
+##### Fitting Random slope #####
+olympic_model_fit <- glmer(formula = p1_won ~ is_p1_home + 
+                             is_p1_powerplay + is_p1_sh +
+                             # percent_period_left +
+                             #is_p1_pp1 + is_p1_pp2 +
+                             #is_p1_sh1 + is_p1_sh2 +
+                             #L +
+                             
+                             D + O + 
+                             is_strong_side +
+                             (1 + D + O | p1) +
+                             (1 | p2), 
+                           #data = olympic_faceoff_data_to_fit, 
+                           data =  olympic_faceoff_data,
+                           #control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)),
+                           family = binomial)
 
-olympic_faceoff_data_to_fit %>%
-  filter(p1 == 'Emily Clark') %>%
-  View()
+summary(olympic_model_fit)
 
-
+##### Should we convert intercept scale to probability scale ? #####
 logit_summary <- summary(olympic_model_fit)$coef
 expit <- function(x) exp(x)/(1+exp(x))
 
@@ -286,9 +306,9 @@ write.csv('./data/faceoff_probs_glmm.csv', x = plot_data,
           row.names = FALSE)
 
 ##### NWHL (Does not have the same players as in Olympics) #####
-nwhl_data <- read.csv('data/hackathon_nwhl.csv', 
-                      stringsAsFactors = FALSE)
-nwhl_faceoff_data <- nwhl_data %>%
-  filter(Event == 'Faceoff Win') 
-
-sort(table(nwhl_faceoff_data$Player))
+# nwhl_data <- read.csv('data/hackathon_nwhl.csv', 
+#                       stringsAsFactors = FALSE)
+# nwhl_faceoff_data <- nwhl_data %>%
+#   filter(Event == 'Faceoff Win') 
+# 
+# sort(table(nwhl_faceoff_data$Player))
