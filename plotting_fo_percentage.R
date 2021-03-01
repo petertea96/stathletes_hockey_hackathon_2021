@@ -159,7 +159,7 @@ ggplot() +
   scale_fill_gradient2(midpoint = mean(top_10_players$tot_fo),
                        low = "#00CCBB", mid = "#FFFBE3",
                        high = "#DD1717", space = "Lab" ) +
-  labs(title = 'Top 10 Aggregate FOW%',
+  labs(title = "Women's Top 10 Aggregate FOW%",
        x = "Faceoff Win (FOW) %",
        y='',
        fill = "Faceoffs Taken",
@@ -167,7 +167,9 @@ ggplot() +
        ) +
   plot_theme()
 
-
+ggsave('faceoff_percentages_olympics.jpg',
+       width=7.25, height=5,
+       dpi = 400)
 
 ##### Faceoff Performance by Zone ####
 faceoff_data_zone <-
@@ -203,13 +205,18 @@ ggplot() +
   scale_fill_gradient2(midpoint = 30,
                        low = "#00CCBB", mid = "#FFFBE3",
                        high = "#DD1717", space = "Lab" ) +
-  labs(title = 'Top 10 Aggregate FOW% by Zone',
+  labs(title = "Women's Top 10 Aggregate FOW% by Zone",
        x = "Faceoff Win (FOW) %",
        y='',
        fill = "Faceoffs Taken",
        caption = '@ptea_test'
   ) +
+  theme(strip.background =element_rect(fill="#f7e3c3"))+
   plot_theme()
+
+ggsave('faceoff_by_zone_olympics.jpg',
+       width=7.25, height=5,
+       dpi = 400)
 
 
 

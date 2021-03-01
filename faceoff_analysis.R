@@ -9,6 +9,9 @@ setwd("C:/Users/Peter/Documents/stathletes_hockey_hackathon_2021")
 olympic_data <- read.csv('data/hackathon_womens.csv',
                          stringsAsFactors = FALSE)
 
+### What matches was observed?
+# unique(olympic_data[,c('game_date','Home.Team','Away.Team')]) %>%
+#   View()
 
 olympic_womens_faceoff_data <- olympic_data %>%
   filter(Event == 'Faceoff Win') %>%
@@ -102,6 +105,8 @@ faceoff_side <- ifelse(olympic_womens_faceoff_data$Y.Coordinate > 42.5, 'R', 'L'
 faceoff_side_complement <- ifelse(faceoff_side == 'R', 'L', 'R')
 olympic_faceoff_data$faceoff_side <- c(faceoff_side, faceoff_side_complement)
 
+olympic_faceoff_data$p2_faceoff_side <- c(faceoff_side_complement, faceoff_side)
+
 olympic_faceoff_data <- cbind(olympic_faceoff_data, 
                               nnet::class.ind(olympic_faceoff_data$zone),
                               nnet::class.ind(olympic_faceoff_data$faceoff_side))
@@ -113,7 +118,11 @@ olympic_faceoff_data <-
 olympic_faceoff_data %>%
   left_join(player_handedness_df, by = c('p1' = 'player_name')) %>%
   mutate(is_strong_side = ifelse(faceoff_side == player_handedness,
-                                 1,0))
+                                 1,0)) %>%
+  left_join(player_handedness_df, by = c('p2' = 'player_name')) %>%
+  rename(p2_handedness = player_handedness.y) %>%
+  mutate(is_p2_strong_side = ifelse(p2_faceoff_side == p2_handedness,
+                                    1,0))
 
 
 # -- What are the faceoff coordinates?
@@ -139,7 +148,9 @@ olympic_faceoff_data <- olympic_faceoff_data %>%
   filter( !(Home.Team %in% c('Clarkson Golden Knights', 'St. Lawrence Saints'))) %>%
   filter( !(Away.Team %in% c('Clarkson Golden Knights', 'St. Lawrence Saints')))
 
-
+olympic_faceoff_data %>%
+  filter(is_p1_pp2 ==1) %>%
+  View()
 # olympic_faceoff_data %>%
 #   filter(is_p1_powerplay == 1) %>%
 #   View()
@@ -190,14 +201,18 @@ olympic_faceoff_data_to_fit <- olympic_faceoff_data %>%
 # is_p1_up_goals, is_p1_down_goals, Period, percent_period_left
 # Specicying 5on3 and 5on4 offers marginal model improvement (AIC reduces by 2 units)
 olympic_model_fit <- glmer(formula = p1_won ~ is_p1_home + 
-                             is_p1_powerplay + is_p1_sh +
+                             #is_p1_powerplay + is_p1_sh +
                              # percent_period_left +
-                             #is_p1_pp1 + is_p1_pp2 +
-                             #is_p1_sh1 + is_p1_sh2 +
+                             is_p1_pp1 + is_p1_pp2 +
+                             is_p1_sh1 + is_p1_sh2 +
                              #L +
                              is_strong_side +
-                             D + O + 
+                             is_p2_strong_side +
+                             #D + O + 
                              (1 | p1) +
+                             # Add uncorrelated random slopes
+                             # https://stats.stackexchange.com/questions/31569/questions-about-how-random-effects-are-specified-in-lmer
+                             #(D -1 | p1) +
                              (1 | p2), 
                          #data = olympic_faceoff_data_to_fit, 
                          data =  olympic_faceoff_data,
@@ -207,6 +222,26 @@ olympic_model_fit <- glmer(formula = p1_won ~ is_p1_home +
 
 summary(olympic_model_fit)
 # VarCorr(olympic_model_fit)
+
+
+predict_df <- data.frame(
+  p1 = 'Brianne Jenner',
+  p2 = 'Melodie Daoust',
+  is_p1_home = 1,
+  is_p1_pp1 = 1,
+  is_p1_pp2 = 0,
+  is_p1_sh1 = 0,
+  is_p1_sh2 = 0,
+  is_strong_side = 1,
+  is_p2_strong_side = 1,
+  stringsAsFactors = FALSE
+)
+
+predict(olympic_model_fit,
+        newdata=predict_df,
+        type="response",
+        allow.new.levels=TRUE)
+
 
 # Get standard deviations of BLUPs
 randoms<-ranef(olympic_model_fit, postVar = TRUE)
@@ -257,6 +292,8 @@ olympic_model_fit <- glmer(formula = p1_won ~ is_p1_home +
                            data =  olympic_faceoff_data,
                            #control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)),
                            family = binomial)
+
+
 
 summary(olympic_model_fit)
 

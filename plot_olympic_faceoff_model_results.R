@@ -143,10 +143,13 @@ ggplot(data = random_int_df,
                                'USA' = '#002F6C', 'RUS' = '#D4AC0D')) +
   labs(y = '',
        x = 'Random Intercept Value',
-       title = 'Above Average Faceoff Skills',
+       title = "Women's 2018-19 Faceoff Skills",
        caption = '@ptea_test') +
   plot_theme()
 
+ggsave('random_intercepts.jpg',
+       width=7.25, height=5,
+       dpi = 400)
 
 
 ##### Plot Defensive vs Offensive Faceoffs #####
@@ -255,10 +258,16 @@ ggplot(data = all_dat) +
   scale_fill_manual(values = colors) +
   facet_grid(.~ Team) +
   scale_x_continuous(breaks = c(-0.1, 0, 0.1)) +
-  labs(y = '',
+  labs(title = 'Zone Faceoff Skills',
+       y = '',
        x = 'Above Average FOW Probabilty',
        caption = '@ptea_test',
        fill = "Zone") +
   theme(strip.background =element_rect(fill="#f7e3c3"))+
   theme(strip.text = element_text(colour = 'black',face = 'bold'))+
   plot_theme()
+
+ggsave('off_vs_def_slope.jpg',
+       width=7.25, height=5,
+       dpi = 400)
+
